@@ -1,0 +1,7 @@
+Figure,Status,Caption,Purpose,Contribution,Workspace_Asset
+Fig 1,Outlined,HydroGraphFM Framework Architecture,Diagram of the end-to-end framework,Overview,N/A
+Fig 2,Outlined,Hierarchical HydroGraph Topology,Visualizing the topological mapping,Contribution 1,N/A
+Fig 3,Outlined,Self-Supervised Pretraining Strategy,Schematic of pretraining reconstruction,Contribution 3,N/A
+Fig 4,Complete,Generalization Performance Matrices,Visualizing downstream R2 scores,Contribution 4,generalization_report_v1.md
+Fig 5,Complete,Latent Space Projections & Strahler Order Manifolds,Projections of reach nodes,Contribution 3 & 4,paper_figures/latent_projections.png
+Fig 6,Complete,Spatial-Temporal Attention & SHAP Importances,Grid of heatmaps and bar charts,Interpretability,paper_figures/attention_patterns.png

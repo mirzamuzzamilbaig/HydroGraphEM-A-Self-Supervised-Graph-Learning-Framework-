@@ -1,0 +1,13 @@
+variable,unit,description,source_type
+SUB,None,Subbasin numeric identifier,Observed
+AREAkm2,km2,Subbasin physical surface area,Observed
+PRECIPmm,mm,Total precipitation sum over the subbasin,SWAT_Simulated
+SNOMELTmm,mm H2O,Snowmelt volume contributing to subbasin runoff,SWAT_Simulated
+PETmm,mm H2O,Potential Evapotranspiration over the subbasin surface area,SWAT_Simulated
+ETmm,mm H2O,Actual Evapotranspiration over the subbasin surface area,SWAT_Simulated
+SWmm,mm H2O,Soil water volume retained in the subbasin soil columns,SWAT_Simulated
+PERCmm,mm H2O,Water percolation out of the root zone,SWAT_Simulated
+SURQmm,mm H2O,Surface runoff contribution from the subbasin,SWAT_Simulated
+GW_Qmm,mm H2O,Groundwater discharge into reach routing channels,SWAT_Simulated
+WYLDmm,mm H2O,Total Water Yield leaving the subbasin,SWAT_Simulated
+SYLDt_ha,metric tons/ha,Sediment yield leaving the subbasin area,SWAT_Simulated

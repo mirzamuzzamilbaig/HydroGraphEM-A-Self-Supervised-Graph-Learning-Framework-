@@ -1,0 +1,48 @@
+variable,unit,description,source_type
+Reach_ID,None,Reach segment numeric identifier,Observed
+Subbasin_ID,None,Subbasin segment numeric identifier,Observed
+FLOW_IN,m3/s,Streamflow volume routing into the reach channel segment,SWAT_Simulated
+FLOW_OUT,m3/s,Streamflow volume routing out of the reach channel segment,SWAT_Simulated
+Channel_Evap,m3/s,Evaporation losses from the stream reach surface,SWAT_Simulated
+Transmission_Loss,m3/s,Transmission losses from the stream reach channel bed,SWAT_Simulated
+Sediment,metric tons,Sediment mass routing out of the reach segment,SWAT_Simulated
+TN,kg N,Total Nitrogen loading transported out of the reach segment,SWAT_Simulated
+TP,kg P,Total Phosphorus loading transported out of the reach segment,SWAT_Simulated
+NO3,mg N/L,Mean Nitrate concentration in reach streamflow,SWAT_Simulated
+NH4,kg N,Ammonium mass load leaving the reach segment,SWAT_Simulated
+Temp_Water,Celsius,Average water temperature in reach channel segment,SWAT_Simulated
+Rainfall,mm,Monthly precipitation sum over the reach catchment (CHIRPS),Observed
+Temp_Mean,Celsius,Monthly daily mean air temperature (ERA5),Observed
+Soil_Moist,m3/m3,Monthly mean soil water volume 0-7cm (ERA5),Observed
+Evaporation,m3/s,Monthly mean evaporation rate (ERA5),Observed
+VV,dB,Sentinel-1 VV polarization backscatter coefficient,Observed
+VH,dB,Sentinel-1 VH polarization backscatter coefficient,Observed
+VV_VH_ratio,None,VV to VH polarization ratio,Derived
+NDVI,None,Normalized Difference Vegetation Index (Landsat/Sentinel-2),Observed
+NDWI,None,Normalized Difference Water Index (Landsat/Sentinel-2),Observed
+MNDWI,None,Modified Normalized Difference Water Index (Landsat/Sentinel-2),Observed
+EVI,None,Enhanced Vegetation Index (Landsat/Sentinel-2),Observed
+Elevation,meters,Mean elevation from digital elevation model (DEM),Observed
+Slope,degrees,Mean terrain gradient/slope,Derived
+TWI,None,Topographic Wetness Index representing soil wetness susceptibility,Derived
+JRC_Occurrence,percent,Surface water occurrence probability (GSW),Observed
+JRC_Seasonality,percent,Surface water seasonality probability (GSW),Observed
+JRC_Recurrence,percent,Surface water recurrence probability (GSW),Observed
+Cropland_pct,percent,Dynamic World cropland cover percentage in reach buffer,Derived
+Wetland_pct,percent,Dynamic World wetland cover percentage in reach buffer,Derived
+Builtup_pct,percent,Dynamic World built-up cover percentage in reach buffer,Derived
+Forest_pct,percent,Dynamic World forest cover percentage in reach buffer,Derived
+Water_pct,percent,Dynamic World open water cover percentage in reach buffer,Derived
+Upstream_ID,None,Topological upstream reach segment identifier,Observed
+Downstream_ID,None,Topological downstream reach segment identifier,Observed
+Reach_Area,km2,Drainage area contributing to the reach segment,Observed
+SURQmm,mm,SWAT subbasin surface runoff contribution,SWAT_Simulated
+SWmm,mm,SWAT subbasin soil water content,SWAT_Simulated
+GW_Qmm,mm,SWAT subbasin groundwater lateral flow contribution,SWAT_Simulated
+WYLDmm,mm,SWAT subbasin total water yield contribution,SWAT_Simulated
+ETmm,mm,SWAT subbasin actual evapotranspiration,SWAT_Simulated
+Month_of_Year,None,Calendar month embedding (1-12),Observed
+Year,None,Calendar year embedding,Observed
+Monsoon_Flag,None,Binary flag indicating monsoon season (1: Jun-Sep, 0: others),Observed
+Sample_ID,None,Pretraining sequence sample identifier (Reach_ID * 1000 + start_month),Observed
+Time_Lag,None,Pretraining sequence monthly time step offset (0-23),Observed

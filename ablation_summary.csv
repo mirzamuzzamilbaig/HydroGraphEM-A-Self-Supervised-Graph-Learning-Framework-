@@ -1,0 +1,5 @@
+Model,Flood_R2,Drought_R2,NO3_R2,Sediment_R2
+Random GAT,-0.0062,-0.0007,-0.0176,-0.0054
+GAT SSL,0.6708,-0.0189,0.4572,0.2082
+Random Transformer,-0.0926,-0.0021,-0.0271,-0.0004
+Transformer SSL,0.6004,-0.0327,0.6850,0.2322

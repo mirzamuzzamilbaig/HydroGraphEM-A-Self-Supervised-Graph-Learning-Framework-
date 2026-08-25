@@ -1,0 +1,67 @@
+# ==========================================
+# Q1 Journal Publication .gitignore
+# HydroGraphEM Framework
+# ==========================================
+
+# 1. Archives, Executables & Large Models
+*.exe
+*.rar
+*.zip
+*.7z
+*.tar.gz
+*.iso
+swat1/
+
+# 2. Datasets, Weights & Binary Checkpoints (Exceeded GitHub limits / Large Data)
+*.parquet
+*.pkl
+*.pt
+*.pth
+*.onnx
+*.npy
+*.npz
+
+# 3. Security & API Keys
+*.json
+!package.json
+
+# 4. Draft Manuscripts, Reviewer Notes & Internal Workflows
+*.docx
+*.doc
+abstract_v1.md
+introduction_v1.md
+methods_section.md
+results_section.md
+discussion_section.md
+cover_letter.md
+reviewer_attack_points.md
+submission_gap_check.md
+foundation_model_report_v1.md
+generalization_report_v1.md
+hydrological_knowledge_report.md
+paper_outline.md
+title_candidates.md
+Final_PreSubmission_Audit.md
+
+# 5. Build Artifacts, Compiled PDFs & Root Loose Screenshots
+*.pdf
+img1.png
+img2.png
+img3.png
+img4.png
+img5.png
+reach_embeddings_analysis.png
+mcdropout_results.txt
+missing_value_report.csv
+feature_statistics.csv
+*_raw_metadata.csv
+metadata_*.csv
+
+# 6. Python & Jupyter Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+scratch/
+.DS_Store
+Thumbs.db

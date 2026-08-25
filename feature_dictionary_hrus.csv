@@ -1,0 +1,13 @@
+variable,unit,description,source_type
+HRU,None,HRU local index within the subbasin,Observed
+GIS,None,Zero-padded GIS identification string of the HRU,Observed
+SUB,None,Subbasin index containing the HRU,Observed
+LULC,None,Land use classification category string identifier,Observed
+AREAkm2,km2,HRU physical surface area,Observed
+SW_INITmm,mm H2O,Initial soil water content at step start,SWAT_Simulated
+SW_ENDmm,mm H2O,Final soil water content at step end,SWAT_Simulated
+PERCmm,mm,Water percolating out of soil profile zone,SWAT_Simulated
+GW_Qmm,mm,Groundwater flow contribution from HRU to subbasin outlet,SWAT_Simulated
+WYLDmm,mm,Total water yield from the HRU,SWAT_Simulated
+LAI,None,Leaf Area Index of vegetation in the HRU,SWAT_Simulated
+BIOMt_ha,metric tons/ha,Biomass accumulation in the HRU,SWAT_Simulated
