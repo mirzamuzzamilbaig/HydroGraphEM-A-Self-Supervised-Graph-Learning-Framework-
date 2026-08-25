@@ -154,7 +154,7 @@ If you use HydroGraphEM in your research, please cite our paper:
 ```bibtex
 @article{muzzamil2026hydrographem,
   title={HydroGraphEM: A Self-Supervised Graph Learning Framework for Multi-Task Watershed Emulation of the Indus Delta},
-  author={Muzzamil, Mirza Muhammad and Ismael, Muhammad Ali and Ahmad, Syed Imran and Rustomov, Rustam B.},
+  author={Muzzamil, Mirza Muhammad ,
   journal={Submitted for Publication},
   year={2026}
 }
