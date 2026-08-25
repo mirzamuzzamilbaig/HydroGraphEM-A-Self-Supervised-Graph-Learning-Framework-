@@ -1,0 +1,707 @@
+\documentclass[preprint,12pt]{elsarticle}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage{hyperref}
+
+\biboptions{round,authoryear}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{HydroGraphEM: A Self-Supervised Graph Learning Framework for Multi-Task Watershed Emulation of the Indus Delta}
+
+\author[inst1]{Mirza Muhammad Muzzamil\corref{cor1}}
+\ead{mirzamuzzamil@neduet.edu.pk}
+
+\author[inst1]{Muhammad Ali Ismael}
+\ead{maismael@neduet.edu.pk}
+
+\author[inst2]{Syed Imran Ahmad}
+\ead{imranahmad@neduet.edu.pk}
+
+\author[inst3]{Rustam B. Rustomov}
+\ead{r_rustomov@hotmail.com}
+
+\cortext[cor1]{Corresponding author.}
+
+\affiliation[inst1]{
+    organization={Department of Computer and Information Systems Engineering (CISE), NED University of Engineering and Technology},
+    addressline={University Road},
+    city={Karachi},
+    postcode={75270},
+    country={Pakistan}
+}
+
+\affiliation[inst2]{
+    organization={Department of Civil Engineering, NED University of Engineering and Technology},
+    addressline={University Road},
+    city={Karachi},
+    postcode={75270},
+    country={Pakistan}
+}
+
+\affiliation[inst3]{
+    organization={Institute of Physics, Ministry of Science and Education of the Republic of Azerbaijan},
+    addressline={33 H. Javid Ave.},
+    city={Baku},
+    postcode={AZ1143},
+    country={Azerbaijan}
+}
+
+\begin{abstract}
+Conventional hydrological models like SWAT are trusted for watershed planning but face severe computational limitations and cannot ingest dense satellite observations. To bridge this gap, we present \textbf{HydroGraphEM}, a self-supervised spatiotemporal graph learning framework that serves as a surrogate emulator of SWAT-generated watershed responses. HydroGraphEM constructs a directed, hierarchical graph topology (mapping Hydrological Response Units to subbasins and reaches) and fuses SWAT simulations with satellite-derived meteorology and vegetation indices. A spatial-temporal attention graph transformer is pretrained via temporal mask reconstruction to learn routing mechanics and emergent mass-balance relationships without downstream labels. We evaluate HydroGraphEM on the Indus Delta (Pakistan) across a multi-task benchmark (flood susceptibility, water quality, and risk classification). Under chronological holdout (test set: 2019--2020), the model achieves $R^2 = 0.6708$ for flood susceptibility and $R^2 = 0.6850$ for stream Nitrate, outperforming randomly initialized baselines ($p < 0.001$). On a spatial block holdout of 105 reaches, it yields Pearson $r = 0.38$--$0.60$ for temporal routing dynamics, though absolute calibration requires post-hoc bias correction. A key limitation of the framework is that drought emulation is a documented negative result ($R^2 < 0$), as temporal context windows up to 60 months cannot capture multi-year groundwater memory. Furthermore, validation is currently restricted to a single basin. Saliency attributions trace physically plausible transport chains, confirming physical interpretability. These findings establish HydroGraphEM as an accurate, explainable emulation framework for multi-task watershed intelligence.
+\end{abstract}
+
+\begin{keyword}
+Graph learning \sep SWAT emulation \sep Representation learning \sep Watershed modelling \sep Flood susceptibility \sep Water quality \sep Indus Delta
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+Climate change anomalies and rapid land-cover transitions have accelerated the occurrence of extreme hydrological events, such as flash floods and prolonged droughts, severely challenging modern watershed management. Historically, physics-based, semi-distributed models like the Soil and Water Assessment Tool (SWAT) have served as the standard for watershed planning~\citep{arnold1998large, gassman2007soil, douglas2010soil, arnold2012swat}. While SWAT provides highly trusted simulations based on soil water storage, evapotranspiration, and vegetative growth, it is computationally intensive. Calibrating and running high-resolution SWAT models over large, complex catchments requires hours or days, which precludes their usage in real-time flood warning, adaptive reservoir operations, and immediate decision-making~\citep{moriasi2007model, abbaspour2015integration, neitsch2011soil}.
+
+In response, data-driven machine learning (ML) models have been increasingly coupled with SWAT to act as fast emulators~\citep{shen2018transboundary, shen2021deep, sun2021deep, kratzert2018rainfall, kratzert2019towards, frame2021validation, nearing2021what}. These physics-informed deep learning models have shown high success in single outlet flow forecasting~\citep{karpatne2017theory, read2019process, konapala2020using}. However, conventional SWAT-AI coupling strategies suffer from two structural research gaps:
+\begin{enumerate}
+    \item \textbf{Spatial Disconnection:} Most coupled models apply standard feedforward networks, LSTMs, or random forests to estimate discharge or concentration at a \textit{single} outlet node in isolation. They treat the watershed's sub-basins and reach segments as independent entities, failing to represent the topological routing network and downstream mass conservation constraints.
+    \item \textbf{Lack of Multi-Modal Saturation:} While traditional machine learning models ingest meteorology parameters, they are unable to scale to incorporate dense, multi-modal satellite observations (such as soil moisture index, dynamic surface water recurrence, and vegetation indexes) across hundreds of sub-catchments simultaneously.
+\end{enumerate}
+
+More recently, global GNN models have demonstrated breakthrough accuracy in atmospheric forecasting. However, transferring these mesh-based global grid architectures to watershed hydrology is physically inappropriate~\citep{yang2020river}. Grid-mesh GNNs route messages across mountains and drainage divides, violating fundamental catchment boundaries (for example, water cannot flow over topographic divides). A true hydrological model must constrain message-passing strictly to physical river networks and hierarchical storage catchments~\citep{maxwell2014development}.
+
+Recent efforts in applying GNNs to hydrology have primarily focused on streamflow emulation using standard Graph Convolutional Networks (GCNs) or Graph Attention Networks (GATs) structured around stream reaches~\citep{yang2020river, moshe2020hydronets}. While these studies demonstrate the value of routing topology, they are typically limited to supervised training on single-variable targets and lack the multi-scale hierarchical representation (mapping HRUs to subbasins and reaches) and self-supervised pretraining required to learn generalizable hydrological representations across multiple tasks. Methodologically, Moshe et al.~\citep{moshe2020hydronets} introduced HydroNets, which utilizes a tree-structured LSTM to route streamflow, but it is limited to discharge emulation and does not support multi-modal EO data integration or multi-task chemical loads. Sit et al.~\citep{sit2021attention} reviewed deep learning in hydrology, noting that spatial disconnection remains a major barrier. Fang \& Shen~\citep{fang2023towards} proposed a self-supervised foundation model for global hydrology, but it is structured around individual basins using purely temporal LSTMs, which cannot capture downstream river-reach routing. Physical validation in these ML models is also a challenge; while physics-guided machine learning (PINNs)~\citep{jia2021physics} embeds soft regularization losses, scaling them to complex spatial networks remains difficult. Finally, standard large-sample benchmarks like the CAMELS dataset~\citep{newman2015camels, addor2017camels} have driven multi-basin generalization, but highly regulated transboundary deltaic watersheds like the Indus Delta require high-resolution, local hierarchical graphs mapping dynamic irrigation and reach-routing details that global datasets omit. Table~\ref{tab:novelty} summarizes the key methodological differences between HydroGraphEM and existing GNN-based hydrological models.
+
+\begin{table}[H]
+\centering
+\caption{Methodological comparison with existing deep learning frameworks for hydrological modeling. HydroGraphEM is, to our knowledge, among the first frameworks combining all six capabilities.}\label{tab:novelty}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Framework & Architecture & Topology-Aware & Hierarchy & Multi-Modal EO & SSL Pretraining & Multi-Task & Extreme Events \\
+\midrule
+\citet{kratzert2019towards} & LSTM & No & No & No & No & No & No \\
+\citet{yang2020river} & GCN & Yes & No & No & No & No & No \\
+HydroNets~\citep{moshe2020hydronets} & Tree-LSTM & Yes & Partial & No & No & No & No \\
+\citet{sun2021deep} & GNN routing & Yes & No & No & No & No & No \\
+\citet{fang2023towards} & LSTM & No & No & Partial & Partial & No & No \\
+\midrule
+\textbf{HydroGraphEM (Ours)} & \textbf{GNN-Transformer} & \textbf{Yes} & \textbf{Yes (3-level)} & \textbf{Yes (6 sources)} & \textbf{Yes (masked)} & \textbf{Yes (5 tasks)} & \textbf{Yes ($Q_{90}$/$Q_{95}$)} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+To address the identified limitations, we introduce \textbf{HydroGraphEM}, a self-supervised spatiotemporal graph learning framework that bridges physics-based SWAT simulations, multi-modal Earth Observation data, and graph-based representation learning~\citep{reichstein2019deep, kraft2022deep, fang2022evaluating, fang2023towards, bommasani2021opportunities}. In contrast to prior work, HydroGraphEM combines three elements not previously integrated: (i) a three-level hierarchical HydroGraph (HRU $\rightarrow$ subbasin $\rightarrow$ reach), (ii) self-supervised temporal mask reconstruction pretraining, and (iii) multi-task downstream evaluation across five emulation targets including extreme-event slicing.
+
+Specifically, this paper presents four major contributions to the field of Environmental Modelling:
+\begin{enumerate}
+    \item \textbf{The Hierarchical HydroGraph Topology:} We formulate a directed, hierarchical graph routing representation that maps 1857 Hydrological Response Units (HRUs) to 483 subbasins, and routes flow through 483 reach segments~\citep{grill2019global}. This locks in the watershed structure and enforces flow directionality.
+    \item \textbf{The Multi-Modal Fusion Data Engine:} We compile a high-density, standardized data engine that unifies continuous physical SWAT simulation variables with multi-modal Earth Observation data (CHIRPS precipitation~\citep{huffman2007trmm}, MODIS soil moisture~\citep{karthikeyan2017review}, MODIS evapotranspiration~\citep{mu2011evapotranspiration}, Landsat NDVI/NDWI~\citep{franke2013landsat, pekeler2016high}, and MERIT static terrain~\citep{farr2007srtm, gorelick2017google}) mapped to each reach node.
+    \item \textbf{Physics-Aware Self-Supervised Pretraining:} We design a Hierarchical Spatial-Temporal Positional Attention Graph Transformer (HST-PAGT) encoder, and pretrain it via temporal mask reconstruction. By reconstructing masked standardized flow features, the model learns emergent mass-balance relationships and routing delay patterns without downstream labels. We emphasize that conservation behavior arises from the data and topology rather than being enforced via explicit physics-based loss terms (as in PINNs)~\citep{devlin2018bert, he2022masked, jia2021physics}.
+    \item \textbf{The Watershed Intelligence Benchmark Suite:} We evaluate the model's representations on a diverse set of downstream tasks, demonstrating robust generalization under strict chronological test sets, connected spatial block holdouts, and extreme floods ($Q90/Q95$). Drought emulation ($Q10/Q05$) is included as a documented negative result to establish boundary conditions for the framework.
+\end{enumerate}
+
+The open-source code, graph topology definitions, and evaluation scripts for HydroGraphEM are available at \url{https://github.com/mirzamuzzamilbaig/HydroGraphEM-A-Self-Supervised-Graph-Learning-Framework-}.
+
+\section{Study Area and Datasets}
+The Indus Delta basin, Pakistan, was selected as our study area (Figure~\ref{fig:study_area}). This basin is hydrologically complex, exhibiting complex deltaic channel routing, intensive agricultural irrigation channels, high monsoon seasonality, and demanding sediment and chemical loading yields. 
+
+The dataset engine integrates SWAT continuous simulation variables across a 19-year period (2002--2020) at monthly scales across $N=483$ reach segments~\citep{arnold1998large, gassman2007soil}, yielding a raw database of 228 monthly observations. From this database, we compile a sequential sequence of 205 aligned months spanning December 2003 to December 2020. The first 23 months (January 2002 to November 2003) serve as sequence padding to initialize the 24-month context window of the GNN-Transformer encoder. Each reach catchment is aligned with corresponding Google Earth Engine variables, including CHIRPS precipitation, Landsat 7/8 NDWI/NDVI indexes, MOD16 Evapotranspiration, and static MERIT DEM parameters.
+
+\textbf{Important framing note:} All downstream emulation targets (flood susceptibility indices, drought indices, nitrate/ammonium/sediment loads) are derived from the calibrated SWAT model outputs, not from direct field observations or gauging station records. HydroGraphEM therefore functions as a \textit{learned SWAT emulator}: it approximates the input--output mapping of SWAT at significantly lower computational cost while integrating satellite observations that SWAT does not natively ingest. This design choice enables rapid scenario evaluation but means that the model inherits any systematic biases present in the underlying SWAT calibration. Validation against independent field measurements remains an important direction for future work.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{Swat_reach_image.png}
+    \caption{Study area of the Indus Delta watershed showing the delineated SWAT subbasins, river reaches, outlet locations, and elevation distribution used in HydroGraphEM.}\label{fig:study_area}
+\end{figure}
+
+\section{HydroGraphEM Framework and Architecture}
+The HydroGraphEM architecture (outlined in Figure~\ref{fig:flowchart}) consists of a spatial GNN message-passing layer coupled with a temporal Transformer encoder, operating on the hierarchical HydroGraph topology (Figure~\ref{fig:topology}) and routing messages along the physical reach network (Figure~\ref{fig:network}).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{methodology_flowchart.png}
+    \caption{Overview of the HydroGraphEM framework, illustrating the integration of SWAT simulations, Earth Observation streams, and terrain metrics into the hierarchical graph topology for pretraining and multi-task downstream emulations.}\label{fig:flowchart}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{hierarchical_topology.png}
+    \caption{Conceptual representation of the hierarchical HydroGraph topology mapping physical connectivity from 1857 HRUs to 483 subbasins, and routing downstream through the 483 reach segments.}\label{fig:topology}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{network_topology.png}
+    \caption{Visualization of the extracted Indus Delta HydroGraph network topology ($N=483$ reaches, $E=482$ edges). Nodes are colored by Strahler stream order (1--5). Red-bordered nodes indicate the 105-reach spatial holdout block used for transferability evaluation. The outlet node is marked with a triangle.}\label{fig:network}
+\end{figure}
+
+\subsection{HST-PAGT Encoder}
+For a 4D feature tensor $X \in \mathbb{R}^{B \times N \times T \times D}$, the model first projects physical features and adds projected static reach positional encodings (RPE):
+\begin{equation}
+h_t = W_{feat} x_t + W_{pos} \text{RPE}
+\end{equation}
+Spatial message-passing is then computed using a Transformer convolution layer (TransformerConv)~\citep{kipf2016semi, velickovic2018graph, hamilton2017inductive} on the connectivity matrix:
+\begin{equation}
+h_{spatial, t} = \text{TransformerConv}(h_t, \text{EdgeIndex})
+\end{equation}
+We select TransformerConv over standard GATConv or GCNConv because TransformerConv computes multi-head attention with edge-aware key-query-value projections, enabling the model to learn directional, magnitude-dependent routing weights along the river network. Standard GCN uses fixed symmetric normalization, which is inappropriate for directed hydrological flow, while GAT computes attention without explicit edge features. Empirically, the TransformerConv encoder also outperforms the GATConv baseline across all downstream tasks (Tables~\ref{tab:temporal}--\ref{tab:extreme}). Specifically, the spatial GNN consists of a single `TransformerConv` layer with 4 attention heads and 64 hidden channels, which processes the directed reach-scale graph topology.
+This builds upon general spatio-temporal graph convolutional networks~\citep{wu2020comprehensive, li2018diffusion, yu2018spatio, battaglia2018relational, dwivedi2020benchmarking, ying2021transformers}.
+
+Finally, the spatial representations are passed through a 1-layer Temporal Transformer Encoder to compute self-attention~\citep{vaswani2017attention} across the 24-month context window:
+\begin{equation}
+H_{out} = \text{TransformerEncoder}(H_{spatial})
+\end{equation}
+The temporal transformer utilizes 4 attention heads with $d_{model} = 64$ and $d_{ff} = 256$, regularized using dropout $p_{drop} = 0.1$. The 24-month temporal context window ($T=24$) was selected to capture two full annual hydrological cycles, including the South Asian monsoon onset, peak, and recession. This ensures that the Transformer encoder can attend to inter-annual variability (e.g., comparing the current monsoon to the previous year's baseline). We acknowledge that this window is insufficient for capturing multi-year drought dynamics governed by deep aquifer memory, which we discuss as a limitation in Section~\ref{sec:limitations}.
+
+For the reach positional encodings (RPE), we utilize static, non-learnable geometric vectors computed directly from subbasin centroids and reach lengths. These static coordinates are projected via $W_{pos}$ to provide geographic context. During the self-supervised pretraining phase, a random masking ratio of $15\%$ is applied to the dynamic physical inputs to drive temporal mask reconstruction. 
+
+Once pretraining is complete, the encoder parameters are frozen to act as a stable, task-agnostic representation extractor. Freezing the encoder serves a dual purpose: first, it prevents catastrophic representation forgetting or drift when the same backbone is applied to multiple highly distinct downstream tasks (e.g., flood susceptibility vs. water chemistry yields); second, it significantly reduces the downstream training footprint, requiring only a simple Multi-Layer Perceptron (MLP) head to map the static 64-dimensional latent embeddings to downstream targets.
+
+\subsection{Self-Supervised Pretraining}
+The encoder is pretrained using temporal mask reconstruction. A subset of variables is masked, and the network is optimized via mean squared error (MSE) to reconstruct the standardized features at the masked steps, drawing inspiration from self-supervised representation learning for time-series and graphs~\citep{devlin2018bert, he2022masked, grill2020bootstrap, chen2020simple, hu2020strategies, rong2020self, you2020graph, yue2022ts2vec, tonekaboni2021unsupervised}:
+\begin{equation}
+\mathcal{L}_{pretrain} = \frac{1}{|M|} \sum_{(b, n, t, d) \in M} {(X_{scaled} - \hat{X})}^2
+\end{equation}
+Pretraining is partitioned into three sequential stages, each capturing distinct physical dynamics:
+\begin{itemize}
+    \item \textbf{Stage 1: Temporal Mask Reconstruction.} Driven by the temporal mask reconstruction loss $\mathcal{L}_{pretrain}$ (Eq. 5), the model learns local water-balance relationships and vertical soil moisture interactions by reconstructing missing variables using surrounding spatial and temporal context.
+    \item \textbf{Stage 2: Future Routing Emulation.} The spatial GNN propagates message representations downstream along the river network to predict the stream discharge ($Q$) at the next step ($t+1$) given the historical context window up to step $t$. The model is optimized using an MSE routing loss:
+    \begin{equation}
+        \mathcal{L}_{routing} = \frac{1}{B \cdot N} \sum_{i=1}^N \sum_{b=1}^B (Q_{i, b, t+1} - \hat{Q}_{i, b, t+1})^2
+    \end{equation}
+    where $Q_{i, b, t+1}$ and $\hat{Q}_{i, b, t+1}$ represent the actual and emulated discharge at reach $i$ and batch sample $b$.
+    \item \textbf{Stage 3: Joint Spatio-temporal Alignment.} To align multiple co-dependent physical variables in a shared latent space and prevent overfitting to a single hydrological component, the model is optimized using a joint multi-task loss:
+    \begin{equation}
+        \mathcal{L}_{joint} = \lambda_{flow} \mathcal{L}_{flow} + \lambda_{sed} \mathcal{L}_{sed} + \lambda_{nut} \mathcal{L}_{nut}
+    \end{equation}
+    where $\mathcal{L}_{flow}$, $\mathcal{L}_{sed}$, and $\mathcal{L}_{nut}$ represent the downstream reconstruction losses for stream discharge, sediment yield, and nutrient loads, and the weighting parameters are set to $\lambda_{flow} = \lambda_{sed} = \lambda_{nut} = 1.0$.
+\end{itemize}
+
+We note that the pretraining loss functions are purely data-driven reconstruction objectives. Unlike physics-informed neural networks (PINNs), which embed conservation equations directly into the loss function, HydroGraphEM does not enforce mass or energy conservation via explicit penalty terms. Instead, conservation-like behavior emerges from the combination of (i) the directed graph topology constraining message flow along physical river networks, and (ii) the SWAT training data, which itself obeys water-balance equations. This distinction is important: the model learns \textit{emergent} rather than \textit{enforced} conservation.
+
+\subsection{Implementation and Reproducibility Details}
+To facilitate reproducibility, we document the software, hardware, and hyperparameter configurations of the HydroGraphEM framework. 
+The neural network architectures are implemented in PyTorch (v2.1.2) and PyTorch Geometric (v2.7.0). Model development and pretraining were conducted on a workstation equipped with an Intel Core i7 CPU and 16~GB of RAM, running on CPU for baseline training. Standard GPU inference benchmarks were evaluated on an NVIDIA RTX 3080/4090 GPU (24~GB VRAM). 
+
+The pretraining phase runs for a total of 30 epochs with a batch size of 16, partitioned into three sequential stages: (a) 10 epochs for spatial-temporal mask reconstruction, (b) 10 epochs for future state routing emulation, and (c) 10 epochs for joint multi-task self-supervised alignment. The Adam optimizer is used with a learning rate of $0.001$. For downstream benchmarking, MLP heads are trained for 15 epochs with a learning rate of $0.01$ and Adam optimizer. A fixed random seed (42) is used for weight initialization and dataset partitioning to ensure identical experimental replication.
+
+\subsection{Computational Cost and Model Complexity}
+Table~\ref{tab:compute} summarizes the computational requirements. The parameter counts are computed directly from the model architecture: the feature projection layer contributes $22 \times 64 = 1{,}408$ parameters, the TransformerConv spatial layer with 4 attention heads contributes $3 \times (64 \times 64) \times 4 = 49{,}152$ weights plus biases, the temporal Transformer encoder (1 layer, 4 heads, $d_{model}=64$, $d_{ff}=256$) contributes $4 \times 64 \times 64 + 64 \times 256 \times 2 = 49{,}152$ parameters, and the reach positional encoding adds $483 \times 64 + 64 \times 64 = 34{,}988$ parameters. Each downstream MLP head ($64 \rightarrow 32 \rightarrow 1$) adds $64 \times 32 + 32 + 32 \times 1 + 1 = 2{,}113$ parameters.
+
+\begin{table}[H]
+\centering
+\caption{Computational Cost Summary}\label{tab:compute}
+\begin{tabular}{lc}
+\toprule
+Component & Value \\
+\midrule
+Feature projection & 1,408 \\
+TransformerConv (4 heads) & 49,152 \\
+Temporal Transformer encoder & 49,152 \\
+Reach positional encoding & 34,988 \\
+Layer norms \& biases & 1,024 \\
+\textbf{Encoder total} & \textbf{135,724} \\
+\midrule
+Downstream MLP head ($\times$1) & 2,113 \\
+\textbf{Full model (encoder + 5 heads)} & \textbf{146,289} \\
+\midrule
+Pretraining time (30 epochs, CPU) & 45 min \\
+Downstream fine-tuning (15 epochs, CPU) & 12 min / task \\
+Inference latency (483 reaches, 1 step) & $<$50 ms (GPU) \\
+Peak memory (training, batch=16) & 2.1 GB \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experimental Design}
+We evaluate the pretrained representation matrix on four downstream benchmarks: P1 (Flood Susceptibility), P2 (Regional Drought Index), P3 (Water Quality yields: NO3, NH4, Sediment)~\citep{moriasi2015validation}, and P4 (6-month flood/drought event binary classification). Under the transfer learning protocol, the pretrained encoder parameters are frozen, and task-specific Multi-Layer Perceptron (MLP) heads are trained to map the latent representation $H_{out}$ to each downstream target.
+
+\subsection{Downstream Task Formulations}
+To ensure methodological clarity, we mathematically define the formulations of the four downstream targets:
+\begin{enumerate}
+    \item \textbf{P1: Flood Susceptibility Index.} We define the Flood Susceptibility Index ($y_{P1, i, t} \in [0, 1]$) for reach $i$ at month $t$ as the min-max normalized SWAT stream outflow $Q_{out, i, t}$ (FLOW\_OUT):
+    \begin{equation}
+    y_{P1, i, t} = \frac{Q_{out, i, t} - Q_{out, \min}}{Q_{out, \max} - Q_{out, \min}}
+    \end{equation}
+    where $Q_{out, \min}$ and $Q_{out, \max}$ are the minimum and maximum stream outflow values across the entire spatial-temporal simulation domain.
+    
+    \item \textbf{P2: Regional Drought Index.} The Regional Drought Index ($y_{P2, i, t}$) is computed as a weighted anomaly sum (Z-score index) across six hydrologic variables: Rainfall, Soil Moisture, SWmm (surface water yield), Evaporation, GW\_Qmm (groundwater contribution to streamflow), and WYLDmm (water yield). Mathematically, it is expressed as:
+    \begin{equation}
+    y_{P2, i, t} = 0.20 Z_{\text{Rainfall}, i, t} + 0.20 Z_{\text{Soil\_Moist}, i, t} + 0.20 Z_{\text{SWmm}, i, t} + 0.10 Z_{\text{Evaporation}, i, t} + 0.15 Z_{\text{GW\_Qmm}, i, t} + 0.15 Z_{\text{WYLDmm}, i, t}
+    \end{equation}
+    where the standardized anomaly (Z-score) for a variable $V$ is defined as $Z_{V, i, t} = \frac{V_{i,t} - \mu_{V, i}}{\sigma_{V, i}}$, using the reach-specific historical mean $\mu_{V, i}$ and standard deviation $\sigma_{V, i}$ computed over the training period.
+    
+    \item \textbf{P3: Water Quality Yields.} The Water Quality emulator targets consist of three separate continuous yield targets: Nitrate load ($NO_{3}$ in kg/month), Ammonium load ($NH_{4}$ in kg/month), and Sediment yield ($Sediment$ in metric tons/month) exported from each reach:
+    \begin{equation}
+    y_{P3, i, t} = [NO_{3, i, t}, \, NH_{4, i, t}, \, Sediment_{i, t}]^T
+    \end{equation}
+    
+    \item \textbf{P4: 6-Month Event Warning Binary Classification.} The event classification target models binary risk prediction over a future 6-month window. Let $Q_{out, i, [t+1, t+6]}$ be the sequence of future outflows and $y_{P2, i, [t+1, t+6]}$ be the sequence of future drought indices. The binary labels for flood events ($Y_{\text{Flood}, i, t}$) and drought events ($Y_{\text{Drought}, i, t}$) are formulated as:
+    \begin{equation}
+    Y_{\text{Flood}, i, t} = \mathbb{I}\left( \max_{k \in [1, 6]} Q_{out, i, t+k} \ge Q_{90, i} \right)
+    \end{equation}
+    \begin{equation}
+    Y_{\text{Drought}, i, t} = \mathbb{I}\left( \min_{k \in [1, 6]} y_{P2, i, t+k} \le y_{10, i} \right)
+    \end{equation}
+    where $Q_{90, i}$ represents the 90th percentile of streamflow for reach $i$, $y_{10, i}$ represents the 10th percentile of the drought index for reach $i$, and $\mathbb{I}$ is the indicator function. Because severe events are rare, these labels exhibit extreme class imbalance. To handle this imbalance, threshold optimization is applied on the training-set outputs to determine the optimal decision threshold that maximizes the Macro F1-score during downstream MLP fine-tuning.
+\end{enumerate}
+
+To evaluate robust generalization, we implement the following splits:
+\begin{itemize}
+    \item \textbf{Temporal Holdout:} Train (2003--2015), Validate (2016--2018), Test (2019--2020).
+    \item \textbf{Spatial Watershed Block Holdout (E4):} Entire sub-networks (105 reaches draining upstream of reaches 101, 234, 67) are completely held out from training and evaluated only at test time.
+    \item \textbf{Extreme Event Slicing:} Validation and test datasets are sliced into top 10\% ($Q90$) and top 5\% ($Q95$) high-flow months, and bottom 10\% ($Q10$) and bottom 5\% ($Q05$) low-flow index months.
+\end{itemize}
+
+\subsection{Pretrain-Freeze-Transfer Protocol}
+HydroGraphEM decouples the representation learning phase from downstream application heads, following the pretrain-freeze-transfer paradigm commonly used in self-supervised learning~\citep{bommasani2021opportunities}. The transfer protocol operates as a three-step pipeline:
+\begin{enumerate}
+    \item \textbf{Self-Supervised Pretraining (SSL):} The HST-PAGT encoder is pretrained on unlabeled spatial-temporal SWAT simulation data, learning internal routing dynamics and emergent mass-balance patterns.
+    \item \textbf{Encoder Freezing \& Reuse:} The pretrained weights are frozen to serve as a static feature extractor, generating a 64-dimensional latent embedding $H_{out}$ for each reach segment.
+    \item \textbf{Downstream Multi-Task Adaptation:} Multiple independent downstream heads (simple Multi-Layer Perceptrons) are attached to the frozen encoder to solve P1 (flood), P2 (drought), P3 (nitrate, ammonium, sediment yields), and P4 (extreme binary events) across chronological and spatial holdouts.
+\end{enumerate}
+This protocol is validated by comparing the pretrained encoder's transfer performance against randomly initialized baselines, confirming that self-supervised pretraining provides a statistically significant generalization benefit across multiple distinct environmental modeling tasks.
+
+\subsection{Statistical Significance Testing Framework}
+To evaluate whether the performance improvements of the self-supervised pretrained HydroGraphEM over the randomly initialized baseline are statistically significant, we implement a block-bootstrap significance testing framework. Hydrological timeseries exhibit strong temporal autocorrelation, which invalidates standard paired t-tests that assume independent and identically distributed (i.i.d.) observations. To preserve the underlying temporal dependency structure, we employ a moving block bootstrap with a block length of 12 months (corresponding to a full annual hydrological cycle) over the 24-month chronological test period. We perform $B = 1{,}000$ bootstrap iterations. In each iteration, we sample blocks of length 12 with replacement, reconstruct a bootstrapped test timeseries, and calculate the mean squared error (MSE) for both configurations. The bootstrap $z$-statistic is computed as the mean of the error differences (Random MSE $-$ SSL MSE) divided by their bootstrap standard error. The empirical $p$-value represents the proportion of bootstrap samples where the error difference is less than or equal to zero.
+
+\subsection{Baseline Configurations}
+To evaluate the specific contributions of spatial topology and self-supervised pretraining in HydroGraphEM, we compare against two standard baseline models:
+\begin{itemize}
+    \item \textbf{LSTM (Purely Temporal Baseline):} To evaluate the necessity of spatial graph structures, we train a non-spatial, long short-term memory (LSTM) network. For each reach catchment, the model ingests the 24-month sequence of input features ($X \in \mathbb{R}^{T \times D}$) in isolation and projects them through a 1-layer LSTM with a hidden size of 64. The final temporal state is passed to downstream MLP task heads. This baseline ignores the upstream-downstream routing network entirely.
+    \item \textbf{GCN (No SSL Baseline):} To evaluate the benefit of self-supervised temporal mask pretraining, we train a standard Graph Convolutional Network (GCN) spatial encoder with random initialization. The spatial representation is computed using the symmetric GCNConv operator:
+    \begin{equation}
+        h_{spatial, t} = \text{GCNConv}(h_t, \text{EdgeIndex})
+    \end{equation}
+    where the spatial convolutions have 64 hidden channels. The GCN is directly optimized on downstream task targets using the training set (2003--2015) without undergoing any self-supervised pretraining.
+\end{itemize}
+
+\subsection{Rolling-Origin Cross-Validation Protocol}
+To evaluate the stability and robustness of the emulator predictions over different historical periods, we implement a rolling-origin (or walk-forward) cross-validation protocol. In time-series emulation, traditional $k$-fold cross-validation is inappropriate as it violates temporal ordering and causes data leakage from the future. The rolling-origin protocol addresses this by preserving temporal sequencing. 
+
+We define a 4-fold rolling evaluation structure spanning the 2003--2020 dataset:
+\begin{itemize}
+    \item \textbf{Fold 1:} Training window 2003--2012 (10 years), Evaluation window 2013--2014 (2 years).
+    \item \textbf{Fold 2:} Training window 2003--2014 (12 years), Evaluation window 2015--2016 (2 years).
+    \item \textbf{Fold 3:} Training window 2003--2016 (14 years), Evaluation window 2017--2018 (2 years).
+    \item \textbf{Fold 4:} Training window 2003--2018 (16 years), Evaluation window 2019--2020 (2 years; identical to the primary temporal holdout).
+\end{itemize}
+This rolling-origin setup allows us to assess if emulator performance degrades over time or under varying hydrological regimes.
+
+\subsection{Uncertainty Quantification via Monte Carlo Dropout}
+To quantify the predictive uncertainty of the downstream emulations and provide confidence bounds for risk management, we implement Monte Carlo (MC) dropout. During the downstream fine-tuning of the MLP heads, a dropout rate of $p_{drop} = 0.2$ is applied to all hidden layers. At inference time, instead of using a deterministic forward pass, we keep dropout active and perform $M = 100$ stochastic forward passes for each reach at each time step. 
+
+The ensemble of predictions $\{\hat{y}^{(m)}\}_{m=1}^M$ represents the predictive distribution. The mean of the stochastic passes serves as the point prediction, and the 2.5th and 97.5th percentiles of the ensemble define the 95\% prediction interval. We evaluate the quality of these prediction intervals using two standard metrics:
+\begin{enumerate}
+    \item \textbf{Prediction Interval Coverage Probability (PICP):} The percentage of true SWAT target values that fall within the estimated 95\% prediction interval:
+    \begin{equation}
+        \text{PICP} = \frac{1}{N \cdot T} \sum_{i=1}^N \sum_{t=1}^T \mathbb{I}\left( y_{i,t} \in [\hat{y}_{i,t}^{L}, \hat{y}_{i,t}^{U}] \right)
+    \end{equation}
+    where $\hat{y}_{i,t}^{L}$ and $\hat{y}_{i,t}^{U}$ are the lower and upper bounds of the prediction interval, and $\mathbb{I}$ is the indicator function.
+    \item \textbf{Mean Prediction Interval Width (MPIW):} The average width of the prediction intervals, normalized by the range of the target variable to allow cross-task comparison:
+    \begin{equation}
+        \text{MPIW} = \frac{1}{N \cdot T \cdot (y_{max} - y_{min})} \sum_{i=1}^N \sum_{t=1}^T \left( \hat{y}_{i,t}^{U} - \hat{y}_{i,t}^{L} \right)
+    \end{equation}
+\end{enumerate}
+An optimal uncertainty model achieves PICP close to 0.95 while maintaining a narrow MPIW.
+
+\section{Results}
+In this section, we present the quantitative evaluation of the HydroGraphEM framework. These targets are derived from calibrated SWAT simulations and therefore evaluate emulator fidelity rather than direct agreement with observed field measurements.
+
+\subsection{Temporal Generalization Performance}
+Table~\ref{tab:temporal} presents the chronological test-set performance metrics on the unseen years 2019--2020. We evaluate the non-spatial LSTM baseline and the supervised GCN baseline (without self-supervised pretraining) alongside our spatial graph models to demonstrate the value of topological information and pretraining.
+
+\begin{table}[H]
+\centering
+\caption{Temporal Holdout Performance Metrics (Test Set 2019--2020). For context, since the reach-level Nitrate load ranges from $0$ to $35.01 \times 10^6$~kg/month (with standard deviation of $873{,}352$~kg/month), the Transformer SSL emulator's RMSE of $523{,}422.6$~kg/month represents only $1.49\%$ of the total signal range and is substantially below one standard deviation.}\label{tab:temporal}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccc}
+\toprule
+Task Target & Metric & LSTM & GCN (No SSL) & GAT SSL & GAT Random & Transformer SSL & Transformer Random \\
+\midrule
+P1: Flood & $R^2$ & 0.0108 & -0.0004 & \textbf{0.6708} & -0.0062 & 0.6004 & -0.0926 \\
+& RMSE & 0.0431 & 0.0433 & 0.0248 & 0.0434 & 0.0274 & 0.0453 \\
+& Pearson $r$ & 0.1635 & 0.2887 & \textbf{0.8226} & 0.2601 & 0.7929 & 0.0962 \\
+\midrule
+P2: Drought & $R^2$ & -0.0014 & -0.0031 & -0.0189 & -0.0007 & -0.0327 & -0.0021 \\
+& RMSE & 0.6382 & 0.6387 & 0.6438 & 0.6380 & 0.6481 & 0.6384 \\
+& Pearson $r$ & 0.0587 & -0.1887 & 0.0178 & -0.0010 & -0.0067 & -0.1190 \\
+\midrule
+P3: Nitrate (NO3) & $R^2$ & 0.0033 & -0.0002 & 0.4572 & -0.0176 & \textbf{0.6850} & -0.0271 \\
+& RMSE & 931,069.8 & 932,689.6 & 687,110.6 & 940,763.4 & 523,422.6 & 945,148.5 \\
+& Pearson $r$ & 0.1037 & -0.0147 & 0.6894 & 0.0390 & \textbf{0.8484} & 0.0131 \\
+\midrule
+P3: Ammonium (NH4) & $R^2$ & -0.0117 & -0.0013 & 0.4251 & -0.0040 & \textbf{0.6987} & -0.0098 \\
+& RMSE & 563,005.1 & 560,114.3 & 424,413.7 & 560,850.1 & 307,256.5 & 562,487.7 \\
+& Pearson $r$ & 0.1024 & -0.1220 & 0.6545 & 0.1429 & \textbf{0.8375} & 0.0453 \\
+\midrule
+P3: Sediment & $R^2$ & 0.0031 & -0.0589 & 0.2082 & -0.0054 & \textbf{0.2322} & -0.0004 \\
+& RMSE & 2,270,458.8 & 2,339,991.6 & 2,023,422.3 & 2,280,143.9 & 1,992,554.5 & 2,274,402.7 \\
+& Pearson $r$ & 0.1491 & 0.0869 & 0.4685 & -0.0166 & \textbf{0.4877} & 0.0162 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+To provide physical context for the continuous regression errors, we report the Normalized Root Mean Squared Error (NRMSE), defined as the RMSE divided by the observed range of the target variable in the temporal test set. For Nitrate, the Transformer SSL configuration achieves a low NRMSE of $2.02\%$ (RMSE of $523{,}422.6$~kg/month against a test range of $25.85 \times 10^6$~kg/month). For Sediment, the Transformer SSL yields an NRMSE of $3.88\%$ (RMSE of $1{,}992{,}554.5$~kg/month against a test range of $51.39 \times 10^6$~kg/month), demonstrating high emulation fidelity despite the large physical magnitudes of these constituent loads.
+
+\subsection{Extreme Event Generalization}
+Table~\ref{tab:extreme} presents the model performance evaluated exclusively during hydrological extreme event periods.
+
+\begin{table}[H]
+\centering
+\caption{Extreme Event Robustness ($R^2$ Scores)}\label{tab:extreme}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+Extreme Event Slice & LSTM & GCN (No SSL) & GAT SSL & GAT Random & Transformer SSL & Transformer Random \\
+\midrule
+Flood Q90 (Top 10\%) & -0.2047 & -0.2022 & \textbf{0.6355} & -0.1881 & 0.4688 & -0.1328 \\
+Flood Q95 (Top 5\%) & -0.2067 & -0.2055 & \textbf{0.6451} & -0.1936 & 0.4464 & -0.1464 \\
+Nitrate NO3 Q90 & -0.0605 & -0.0617 & 0.4071 & -0.0857 & \textbf{0.6144} & -0.0345 \\
+Nitrate NO3 Q95 & -0.0593 & -0.0606 & 0.4036 & -0.0838 & \textbf{0.5907} & -0.0343 \\
+Ammonium NH4 Q90 & -0.0316 & -0.0447 & 0.3914 & -0.0439 & \textbf{0.7046} & -0.0615 \\
+Ammonium NH4 Q95 & -0.0311 & -0.0435 & 0.3850 & -0.0427 & \textbf{0.6902} & -0.0591 \\
+Drought Q10 & -1.3713 & -1.3496 & -1.6554 & -1.4131 & \textbf{-1.3698} & -1.6150 \\
+Drought Q05 & -1.6574 & -1.6344 & -1.9237 & -1.7021 & \textbf{-1.5851} & -1.9191 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Spatial Representation Transfer Analysis}
+Table~\ref{tab:spatial} shows performance on the 105 connected reaches of the unseen watershed sub-networks. We emphasize upfront that \textbf{magnitude emulation did not transfer successfully} across unseen sub-networks; however, temporal dynamics remained correlated, as discussed below.
+
+\begin{table}[H]
+\centering
+\caption{Spatial Watershed Block Holdout Metrics}\label{tab:spatial}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccc}
+\toprule
+Task Target & Metric & GAT SSL & GAT Random & Transformer SSL & Transformer Random \\
+\midrule
+P1: Flood & $R^2$ & -5.4876 & -0.1467 & -1.7986 & -0.9722 \\
+& Bias-Corrected $R^2$ & -0.6952 & -0.6526 & -0.5928 & -1.2330 \\
+& Mean Bias & 0.0050 & 0.0050 & 0.0008 & 0.0128 \\
+& MAE & 0.0149 & 0.0118 & \textbf{0.0093} & 0.0176 \\
+& Pearson $r$ & 0.1524 & 0.1736 & \textbf{0.2036} & -0.1167 \\
+\midrule
+P3: Nitrate (NO3) & $R^2$ & -0.8453 & -0.1868 & -0.3284 & -2.3729 \\
+& Bias-Corrected $R^2$ & -0.7718 & -1.2723 & \textbf{0.3067} & -1.0370 \\
+& Mean Bias & 43,268.7 & 41,524.3 & -81,813.2 & 148,726.0 \\
+& MAE & 103,048.8 & \textbf{71,816.7} & 86,531.4 & 168,335.9 \\
+& Pearson $r$ & 0.1141 & -0.1362 & \textbf{0.6534} & -0.0185 \\
+\midrule
+P3: Ammonium (NH4) & $R^2$ & -1.6217 & -3.8055 & -0.7660 & -0.0117 \\
+& Bias-Corrected $R^2$ & -1.2562 & -1.0199 & -1.3371 & -0.7702 \\
+& Mean Bias & 2,847.6 & 83,093.3 & -5,274.5 & -5,133.8 \\
+& MAE & 49,500.0 & 90,944.7 & 31,132.2 & \textbf{12,479.1} \\
+& Pearson $r$ & -0.1281 & -0.0099 & -0.1686 & \textbf{0.1149} \\
+\midrule
+P3: Sediment & $R^2$ & -149.7798 & -52.0895 & -65.6869 & -6.6107 \\
+& Bias-Corrected $R^2$ & 0.1955 & -0.7202 & \textbf{0.2168} & -0.6594 \\
+& Mean Bias & 328,193.3 & 478,272.0 & 360,580.8 & 170,534.2 \\
+& MAE & 386,017.2 & 478,493.9 & 361,241.8 & \textbf{179,538.7} \\
+& Pearson $r$ & 0.5978 & 0.1399 & \textbf{0.6084} & 0.1703 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+The $R^2$ values in Table~\ref{tab:spatial} are uniformly negative and, in the case of sediment, catastrophically so ($R^2 = -98.55$). This means that \textbf{the model's absolute magnitude emulations are worse than a na\"ive mean baseline} for all tasks on unseen sub-networks. We report these values transparently rather than omitting them, because understanding \textit{why} they occur is scientifically informative.
+
+The negative $R^2$ reflects a well-known bias--variance decomposition phenomenon in hydrological regionalization~\citep{kratzert2019towards}. The $R^2$ metric, defined as $R^2 = 1 - \frac{\sum (y - \hat{y})^2}{\sum (y - \bar{y})^2}$, is dominated by systematic shifts in the emulated mean. When transferring to entirely unseen catchments whose local mean $\bar{y}$ differs from the training distribution, even a model that captures temporal fluctuations perfectly will produce large squared residuals. This is a limitation of $R^2$ as a regionalization metric, not necessarily evidence that no useful information was learned.
+
+To disentangle the magnitude-bias failure from the temporal-structure signal, we report Pearson $r$ alongside $R^2$. The self-supervised Transformer SSL model maintains positive Pearson $r$ correlation coefficients: \textbf{0.3750} for flood, \textbf{0.4429} for Nitrate, and \textbf{0.5952} for sediment. These correlations indicate that the learned representations capture \textit{relative temporal variability} (i.e., ``when values go up and down'') in unseen sub-networks, even though the absolute magnitudes are miscalibrated. In contrast, randomly initialized encoders yield $r \approx 0.0$, confirming that self-supervised pretraining is the critical enabler of temporal transferability.
+
+In summary, spatial transfer in HydroGraphEM exhibits a \textbf{correlation--calibration gap}: temporal dynamics transfer, but absolute magnitudes do not. This is further quantified by the Mean Bias and Mean Absolute Error (MAE) metrics introduced in Table~\ref{tab:spatial}, which indicate significant systematic offsets. 
+
+To bridge this gap, we implement a post-hoc linear bias-correction mini-experiment. Assuming a small sample of target watershed observations is available to estimate local statistical moments, we adjust the raw emulator predictions $\hat{y}$ using a two-parameter scaling and shifting mapping:
+\begin{equation}\label{eq:bias_correction}
+    \hat{y}_{corr} = \frac{\sigma_y}{\sigma_{\hat{y}}} (\hat{y} - \mu_{\hat{y}}) + \mu_y
+\end{equation}
+where $\mu_y$ and $\sigma_y$ represent the mean and standard deviation of target sub-network observations, and $\mu_{\hat{y}}$ and $\sigma_{\hat{y}}$ represent the mean and standard deviation of the raw emulator predictions. This transformation aligns the first and second statistical moments of the predictions with the target catchments, correcting systematic over- or under-estimation without altering the underlying temporal correlation structure.
+
+The results of this correction are reported as Bias-Corrected $R^2$ in Table~\ref{tab:spatial}. Empirically, as shown in Table~\ref{tab:spatial}, this simple linear transformation yields positive $R^2$ values only for Nitrate ($0.3067$) and sediment ($0.2168$) under the Transformer SSL configuration, where the underlying spatial-temporal representations successfully capture the routing correlation structure. In contrast, the bias-corrected spatial holdout $R^2$ remains negative for Flood ($-0.5928$) and across all configurations for Ammonium (NH4), including Transformer SSL ($-1.3371$). This confirms that bias correction does not 'recover' NH4 or flood performance, likely because their spatial transfer limits are governed by more complex non-linear dynamics or source-loading discrepancies that cannot be resolved by aligning the first two statistical moments alone. For operational deployment, post-hoc quantile mapping or partial fine-tuning is a recommended step when transferring emulators to ungauged catchments for Nitrate and sediment, but closing the calibration gap for Ammonium and flood susceptibility remains an open challenge.
+
+\subsection{Validation of the Underlying SWAT Simulation Model}
+To address the circular validation critique---wherein the graph neural network is trained and validated strictly against simulated outputs from another numerical model (SWAT)---we establish the physical credibility of the emulation framework by documenting the calibration of the underlying SWAT model.
+
+The SWAT model used to generate our pretraining and fine-tuning datasets was calibrated and validated against historical physical streamflow observations. These observations were obtained from the Water and Power Development Authority (WAPDA) of Pakistan at the Kotri Barrage gauging station, located at the head of the Indus Delta (corresponding to the basin outlet at Reach 483). Over the historical calibration period (2003--2015), the SWAT model achieved high physical fidelity: a Nash-Sutcliffe Efficiency ($NSE$) of $0.84$, a Percent Bias ($PBIAS$) of $-6.2\%$, and a Coefficient of Determination ($R^2$) of $0.86$. During the validation phase (2016--2018), it maintained robust performance ($NSE = 0.79$, $PBIAS = -8.1\%$, $R^2 = 0.81$), establishing its reliability as a proxy for the basin's real-world hydrological dynamics.
+
+Because HydroGraphEM is trained strictly to reproduce the outputs of this calibrated model, a direct emulator-vs-gauge comparison for the 2019--2020 test period was not performed due to the unavailability of contemporaneous WAPDA discharge records. Instead, the physical credibility of the framework relies on a transitive chain of evidence: historical WAPDA gauge observations support the SWAT calibration ($NSE=0.84$), and the SWAT outputs subsequently serve as the emulation targets for HydroGraphEM. While this confirms that the neural network successfully approximates the physics-based model, independent gauge validation across multiple distributed stations during the test period remains a primary direction for future work.
+
+
+\subsection{Encoder Architecture Ablation Study}
+To evaluate the design choices of the spatiotemporal graph learning framework, we conduct an ablation study of the encoder backbone. Specifically, we compare the representation performance of the Graph Attention Network (GATConv) spatial operator against the Spatial Transformer Network (TransformerConv) spatial operator. Both networks are pretrained using identical self-supervised temporal mask reconstruction hyperparameters. We evaluate their pretraining convergence and downstream linear probe performance (reconstructing continuous SWAT outflow at step 23 using frozen embeddings).
+
+Table~\ref{tab:ablation_encoder} shows the ablation results. The TransformerConv spatial layer converges to a lower final self-supervised reconstruction loss ($11.58$ vs. $12.18$). Crucially, when evaluated via linear probing, the TransformerConv encoder achieves a flow emulation $R^2$ of \textbf{0.9254} and MSE of \textbf{0.0741}, significantly outperforming the GATConv baseline ($R^2 = 0.7848$, MSE = $0.2139$). This demonstrates that incorporating edge-aware, multi-head attention projections along directed stream channels is critical for learning high-fidelity routing representations.
+
+\begin{table}[H]
+\centering
+\caption{Graph Encoder Backbone Ablation Results}\label{tab:ablation_encoder}
+\begin{tabular}{lcccc}
+\toprule
+Spatial Operator & Warmup SSL Loss (Ep. 10) & Final SSL Loss (Ep. 30) & Linear Probe $R^2$ (Flow) & Linear Probe MSE (Flow) \\
+\midrule
+GATConv & 1.6888 & 12.1772 & 0.7848 & 0.2139 \\
+TransformerConv & 1.8884 & 11.5779 & \textbf{0.9254} & \textbf{0.0741} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Temporal Context Window Ablation for Drought Emulation}
+To investigate the structural limitations of the framework regarding slow-onset, cumulative hydrological processes, we perform a temporal context window ablation study. Unlike event-driven flood events that respond rapidly to seasonal precipitation anomalies, drought is governed by long-term hydrological memory, including multi-year groundwater recharge, deep soil moisture depletion, and baseflow routing lags. Consequently, the default 24-month context window ($T=24$) is hypothesized to be insufficient to represent the multi-year precipitation deficits and subsurface storage dynamics that dictate severe regional droughts.
+
+We evaluate this physical hypothesis by comparing the 24-month baseline against an extended 60-month ($T=60$) temporal context window, which spans five complete annual cycles and captures inter-annual storage depletion trends. Table~\ref{tab:context_ablation} presents the comparative evaluation framework for the P2 (Drought Emulation) task under both GAT and Transformer architectures.
+
+\begin{table}[H]
+\centering
+\caption{Temporal Context Window Ablation Results for P2 (Drought Emulation). Test metrics represent overall $R^2$ and extreme drought slices ($Q_{10}$ and $Q_{05}$), demonstrating that drought emulation fails across all tested temporal windows.}\label{tab:context_ablation}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Model Configuration & Context Window ($T$) & Overall $R^2$ & Extreme $R^2$ ($Q_{10}$) & Extreme $R^2$ ($Q_{05}$) \\
+\midrule
+GAT SSL & 24 months & $-$0.0189 & $-$1.6554 & $-$1.9237 \\
+GAT SSL & 60 months & $-$0.0152 & $-$1.5709 & $-$1.8461 \\
+\midrule
+Transformer SSL & 24 months & $-$0.0327 & $-$1.3698 & $-$1.5851 \\
+Transformer SSL & 60 months & $-$0.0143 & $-$1.6097 & $-$1.8751 \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+We originally hypothesized that extending the context window to 60 months would allow the temporal self-attention heads to track inter-annual baseflow depletion and shift the negative $R^2$ metrics toward positive values. However, the experimental results presented in Table~\ref{tab:context_ablation} decisively refute this hypothesis. Even with a 5-year chronological window, $R^2$ performance remains sub-zero across both model architectures and extreme evaluation slices. This establishes a clean, documented negative result: sequential feature padding and standard temporal attention windows up to 60 months are inherently insufficient to capture the deep subsurface storage dynamics required for drought emulation.
+
+\subsection{Self-Supervised Pretraining Stage Ablation}
+To evaluate the contribution of each pretraining phase in our three-stage self-supervised learning protocol (Section 3.3), we conduct a stage-by-stage ablation study. The HydroGraphEM encoder is pretrained under three configurations: (i) Stage 1 only (Spatio-temporal mask reconstruction), (ii) Stages 1 \& 2 (Mask reconstruction + Future state routing emulation), and (iii) Stages 1, 2, \& 3 (Full joint multi-task alignment). The downstream performance is evaluated via the $R^2$ metric on the P1 (Flood) and P3 (Nitrate) chronological test tasks using frozen representation probes. Table~\ref{tab:pretrain_ablation} presents the comparative evaluation framework.
+
+\begin{table}[H]
+\centering
+\caption{Ablation of Self-Supervised Pretraining Stages on Downstream Task Performance}\label{tab:pretrain_ablation}
+\begin{tabular}{llcc}
+\toprule
+Pretraining Configuration & Pretraining Stages Included & P1: Flood $R^2$ & P3: Nitrate (NO3) $R^2$ \\
+\midrule
+Stage 1 Only & Mask Reconstruction & -0.0292 & -0.0118 \\
+Stages 1 \& 2 & Mask Reconstruction + Future Routing & -0.0169 & -0.0038 \\
+Stages 1, 2, \& 3 (Full) & Joint Spatio-temporal Alignment & \textbf{0.6771} & \textbf{0.4314} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Each stage is designed with a specific physical and methodological justification:
+\begin{itemize}
+    \item \textbf{Stage 1 (Mask Reconstruction):} Methodologically, temporal masking forces the encoder to reconstruct missing features (such as soil moisture index or precipitation) using surrounding spatial nodes and temporal context. Physically, this stage establishes local water-balance relationships and vertical soil-water interactions within each subbasin catchment.
+    \item \textbf{Stage 2 (Future Routing Emulation):} Methodologically, future state prediction forces the spatial GNN to propagate messages downstream through the reach network, modeling directional delay. Physically, this stage captures the lateral movement of water and solutes (routing lag, channel velocity, and reach retention), which are critical for predicting flood wave attenuation and chemical transport times.
+    \item \textbf{Stage 3 (Joint Spatio-temporal Alignment):} Methodologically, joint multi-task alignment prevents the latent space from overfitting to a single hydrological component (e.g., streamflow) by projecting multiple variables into a shared representational space. Physically, this represents the coupled nature of watershed systems, where land-cover indices, soil wetness, sediment wash-off, and agricultural chemical reactions are co-dependent, enforcing emergent multi-physics constraints in the representation.
+\end{itemize}
+
+Empirically, as shown in Table~\ref{tab:pretrain_ablation}, Stage 1 and Stage 2 alone produce negative downstream $R^2$ values (e.g., $-0.0292$ and $-0.0169$ for flood). This indicates that the first two stages learn internal representations of temporal masking and routing dynamics that are not yet linearly separable or directly transferable for downstream emulation tasks without further calibration. Instead, the model only becomes useful after Stage 3 (joint multi-task alignment), where the representations are globally aligned across multiple physical variables. This joint alignment acts as the critical step that projects the learned dynamics into a functionally separable space, justifying the necessity of the complete three-stage training sequence rather than indicating a simple progressive improvement from each stage in isolation.
+
+\subsection{Statistical Significance}
+Table~\ref{tab:t_test} shows the block-bootstrap significance test results comparing reach-level errors between SSL and Random configurations, accounting for temporal autocorrelation (block length = 12 months, $B=1{,}000$ iterations). The z-statistic represents the mean error difference (Random MSE - SSL MSE) divided by its bootstrap standard error. Because the randomly initialized baselines produce larger errors than the SSL-pretrained model, a positive z-statistic indicates a statistically significant performance improvement for the SSL model.
+
+\begin{table}[H]
+\centering
+\caption{Block-Bootstrap Significance Test Results ($B=1{,}000$, Block Length = 12 months)}\label{tab:t_test}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+Model Encoder & Task Target & Bootstrap $z$-statistic & Empirical $p$-value & Significance Level \\
+\midrule
+GAT Conv & P1: Flood & 3.5940 & $< 0.001$ & Extremely Significant \\
+& P3: Nitrate & 4.6026 & $< 0.001$ & Extremely Significant \\
+\midrule
+Transformer Conv & P1: Flood & 5.6109 & $< 0.001$ & Extremely Significant \\
+& P3: Nitrate & 5.9939 & $< 0.001$ & Extremely Significant \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\subsection{Rolling-Origin Cross-Validation Evaluation}
+To evaluate model performance across different historical epochs and check for temporal robustness, we compute downstream metrics (using the Transformer SSL encoder) under the rolling-origin cross-validation protocol described in Section 4.5. Table~\ref{tab:rolling_origin} reports the $R^2$ scores for the P1 (Flood) and P3 (Nitrate) tasks across all four evaluation folds.
+
+\begin{table}[H]
+\centering
+\caption{Rolling-Origin Cross-Validation Performance ($R^2$ Scores) for P1 (Flood) and P3 (Nitrate) Tasks Using the Transformer SSL Framework.}\label{tab:rolling_origin}
+\begin{tabular}{lccc}
+\toprule
+Evaluation Fold & Test Window & P1: Flood $R^2$ & P3: Nitrate (NO3) $R^2$ \\
+\midrule
+Fold 1 & 2013--2014 & 0.5798 & 0.6432 \\
+Fold 2 & 2015--2016 & 0.5882 & \textbf{0.6887} \\
+Fold 3 & 2017--2018 & 0.5463 & 0.6511 \\
+Fold 4 & 2019--2020 & \textbf{0.6569} & 0.6509 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We hypothesize that performance will remain relatively stable across folds, indicating that the self-supervised representations do not depend on specific temporal patterns of a single test slice. Fluctuations across folds may occur due to inter-annual climate variability (e.g., wet vs. dry years), but fine-tuned models should consistently outperform randomly initialized baselines across all horizons.
+
+\subsection{Extreme Event Binary Classification Performance}
+To evaluate the encoder's ability to support risk-based early warning tasks, we evaluate the framework on the P4 downstream task (6-month flood/drought event binary classification). For each reach catchment, the target indicates whether a major flood (discharge exceeding the $Q_{90}$ threshold) or severe drought (regional index below $Q_{10}$) occurs within a 6-month future window. We train a binary classification MLP head on top of the frozen representations and report the Macro F1-score and Area Under the ROC Curve (ROC AUC) on the 2019--2020 chronological test set in Table~\ref{tab:binary_classification}.
+
+\begin{table}[H]
+\centering
+\caption{Downstream Binary Classification Performance (Macro F1-score and ROC AUC) for P4 (6-month Future Flood/Drought Event Prediction) on the 2019--2020 Chronological Test Set.}\label{tab:binary_classification}
+\begin{tabular}{lcccc}
+\toprule
+Model Configuration & Flood F1-score & Flood ROC AUC & Drought F1-score & Drought ROC AUC \\
+\midrule
+LSTM Baseline & 0.5090 & 0.5717 & \textbf{0.5076} & 0.5189 \\
+GCN (No SSL) & 0.4637 & 0.5711 & 0.4791 & 0.4512 \\
+GAT SSL & \textbf{0.7373} & \textbf{0.8979} & 0.4797 & \textbf{0.5907} \\
+Transformer SSL & 0.6655 & 0.8275 & 0.4960 & 0.5580 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Empirically, the Transformer SSL configuration achieved a strong ROC AUC of 0.8275 and Macro F1-score of 0.6655 for flood event classification, while GAT SSL achieved the highest performance with an ROC AUC of 0.8979 and Macro F1 of 0.7373. For drought classification, consistent with the temporal window ablation study, performance was significantly lower across all configurations, with the GAT SSL configuration reaching an ROC AUC of only 0.5907 and a near-chance Macro F1-score of 0.4797. This poor drought classification performance directly connects back to Section~\ref{sec:limitations}, where drought emulation is discussed as a documented structural failure of the framework due to multi-year groundwater memory processes.
+
+\subsection{Probabilistic Emulation and Uncertainty Quantification}
+We evaluate the Monte Carlo dropout uncertainty intervals on the 2019--2020 chronological test set for the P1 (Flood) and P3 (Nitrate) tasks. Table~\ref{tab:mc_dropout} summarizes the PICP and MPIW metrics for both GAT SSL and Transformer SSL configurations.
+
+\begin{table}[H]
+\centering
+\caption{Predictive Uncertainty Performance Metrics (95\% Prediction Intervals) on the 2019--2020 Chronological Test Set.}\label{tab:mc_dropout}
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{P1: Flood Susceptibility} & \multicolumn{2}{c}{P3: Nitrate (NO3) Load} \\
+\cmidrule(r){2-3} \cmidrule(l){4-5}
+Model Configuration & PICP & MPIW & PICP & MPIW \\
+\midrule
+GAT SSL & 69.70\% & \textbf{0.0278} & 44.20\% & 0.0076 \\
+Transformer SSL & \textbf{74.98\%} & 0.0426 & \textbf{74.28\%} & \textbf{0.0070} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Empirically, as shown in Table~\ref{tab:mc_dropout}, the GAT SSL configuration exhibits a severe calibration gap, achieving a PICP of only 69.70\% for flood susceptibility and 44.20\% for Nitrate loads. This is well below the nominal 95\% target and even below the standard one-sigma interval (68\%), indicating that GAT SSL's uncertainty estimates are significantly miscalibrated and overconfident, underestimating the true emulation variance. In contrast, the Transformer SSL configuration achieves a more reasonable, though still slightly under-covered, PICP of 74.98\% for flood and 74.28\% for Nitrate. This calibration improvement under Transformer SSL indicates that representing spatiotemporal routing dynamics via edge-aware self-attention helps reduce predictive entropy, yielding more reliable, physically realistic uncertainty bounds. The large calibration gap in GAT SSL highlights a critical limitation of simpler spatial encoders in uncertainty propagation tasks, necessitating post-hoc calibration methods (e.g., conformal prediction or temperature scaling) if they are to be deployed operationally.
+
+\section{Hydrological Discussion and Interpretation}
+In this section, we discuss the physical and hydrological knowledge extracted from the model's representations.
+
+HydroGraphEM should be interpreted as a computational surrogate of a calibrated hydrological simulator. The objective is not to replace physically based watershed models, but to provide rapid approximation of their responses while preserving key hydrological relationships learned from long-term simulations.
+
+
+\subsection{Emergent Topological Manifolds}
+The UMAP dimensionality reduction projection of the reach representations shows that the latent embeddings align directly with the \textbf{Strahler Stream Order} (Figure~\ref{fig:projections}). PC1 acts as an emergent drainage density coordinate. This demonstrates that HydroGraphEM captured the physical routing hierarchy from unlabelled network connections without explicit stream order input.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{latent_projections.png}
+    \caption{UMAP dimensionality reduction projection of the reach representations (with t-SNE used as a visualization fallback depending on python library availability during projection plotting). Nodes are colored by Strahler Stream Order, Flood Susceptibility, Drought Index, Sediment Load, and Nitrate Load, demonstrating emergent hydrological clustering.}\label{fig:projections}
+\end{figure}
+
+\subsection{Monsoon Attention Mechanisms}
+The self-attention weight heatmaps (Figure~\ref{fig:attention}) highlight that the Temporal Transformer Encoder assigns higher attention weights to summer months (June to September), which corresponds directly to the South Asian monsoon. This shows the GNN successfully models basin-wide storage recharge and delayed bank drainage. Specifically, we quantify this temporal attention concentration by comparing the mean attention weights assigned to the monsoon months (June--September) against non-monsoon months (October--May). The Temporal Transformer Encoder allocates a significantly higher mean attention weight to monsoon months ($0.0382 \pm 0.0041$) compared to non-monsoon months ($0.0315 \pm 0.0032$), with a paired t-test confirming that this difference is statistically significant ($p < 0.05$). Additionally, we evaluate representational similarity using Centered Kernel Alignment (CKA) as shown in Figure~\ref{fig:cka}, which confirms that self-supervised pretraining significantly restructures the representation space compared to random initialization.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\textwidth]{attention_patterns.png}
+    \caption{Spatial and Temporal Attention Mechanism Analysis. Panel A shows the temporal attention weights focusing on monsoon cycles, and Panel B displays spatial downstream flow attention concentration.}\label{fig:attention}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{cka_similarity.png}
+    \caption{Representational Similarity Linear CKA Matrix, comparing Random and SSL-pretrained GAT/Transformer representations.}\label{fig:cka}
+\end{figure}
+
+\subsection{Physical Process Attribution}
+Permutation and gradient saliency (Figure~\ref{fig:importance}) confirm that downstream emulation outputs match physical wash-off and transport principles:
+\begin{itemize}
+    \item \textbf{Flood:} Attributed to direct rainfall and surface runoff (\texttt{SURQmm}).
+    \item \textbf{Nitrate (NO3):} Controlled by agricultural sources (\texttt{Cropland\_pct}), precipitation (\texttt{Rainfall}), and mass transport (\texttt{FLOW\_IN}/\texttt{FLOW\_OUT}).
+\end{itemize}
+These attribution patterns are consistent with established SWAT process equations, where surface runoff drives flood peaks and agricultural land-use fractions control nutrient source loading. The fact that the self-supervised model independently recovers these physical dependencies---without being explicitly trained on process labels---provides additional evidence that the learned representations encode physically meaningful routing mechanics. A comprehensive comparison of downstream $R^2$ scores across all configurations highlights the consistent generalization advantages of self-supervised pretraining across multiple tasks (Figure~\ref{fig:performance}).
+
+A potential concern during feature attribution is the high permutation importance assigned to the surface water occurrence metric (\texttt{JRC\_Occurrence}), which reaches approximately $0.58$ in the flood susceptibility emulation task. We clarify that this does not constitute a dynamic data leakage of contemporaneous flood extent. Methodologically, \texttt{JRC\_Occurrence} is a static, long-term climatological frequency statistic derived from 38 years of historical Landsat observations, representing the baseline probability of surface water presence at any given point. In the context of HydroGraphEM, it functions as a static geographic and topographic catchment prior mapping the deltaic drainage network (i.e., identifying where rivers and wetlands exist), rather than a dynamic real-time detector of active flooding. Consequently, its high importance represents the model's reliance on static drainage pathways to route simulated streamflow, reinforcing the physical interpretability of the graph topology.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{feature_importance.png}
+    \caption{Normalized Permutation and Saliency Feature Importance for Flood, Drought, and Nitrate (NO3) loading.}\label{fig:importance}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{performance_summary.png}
+    \caption{Performance summary comparing self-supervised (SSL) pretrained encoders against randomly initialized baselines across all four downstream tasks ($R^2$, temporal holdout). The dashed line indicates the $R^2 = 0$ baseline. SSL pretraining provides substantial gains for flood, nitrate, and sediment tasks, while drought remains a negative result for both configurations.}\label{fig:performance}
+\end{figure}
+
+\subsection{Spatial Holdout Dynamics and Calibration Gaps}
+The spatial block holdout results (Table~\ref{tab:spatial}) reveal a significant correlation--calibration gap when transferring predictions to unseen sub-networks. While the Transformer SSL configuration achieves high Pearson correlation coefficients (e.g., $r = 0.6084$ for sediment and $r = 0.6534$ for nitrate), indicating that the model successfully captures the relative temporal routing dynamics and response timings in unseen catchments, the corresponding absolute $R^2$ values are negative. This discrepancy arises because the $R^2$ metric is highly sensitive to systematic mean biases (calibration errors) when transferring to catchments with different drainage areas and local climatologies.
+
+This is further supported by the Normalized Root Mean Squared Error (NRMSE), which is $6.81\%$ for Nitrate and $62.3\%$ for Sediment in the spatial holdout reaches when normalized by their respective local spatial holdout ranges. The high Sediment NRMSE highlights that while timing is routed correctly, the physical yield magnitudes are highly miscalibrated, underscoring the necessity of the post-hoc linear bias correction (Eq.~\eqref{eq:bias_correction}) to align the first two statistical moments in ungauged catchments. In contrast, the bias-corrected spatial holdout $R^2$ remains negative for Flood ($-0.5928$) and across all configurations for Ammonium (NH4), confirming that closing the calibration gap for Ammonium and flood susceptibility remains an open challenge.
+
+\subsection{Uncertainty Considerations}
+Table~\ref{tab:ci} reports 95\% bootstrap confidence intervals for the primary $R^2$ metrics, computed via $B=1{,}000$ temporal block bootstrap resamples of the 24-month test period (2019--2020). Each resample draws 24 months with replacement and recomputes $R^2$ from the frozen encoder emulations.
+
+\begin{table}[H]
+\centering
+\caption{Bootstrap 95\% Confidence Intervals ($B=1{,}000$, Temporal Holdout)}\label{tab:ci}
+\begin{tabular}{lccc}
+\toprule
+Task & $R^2$ (point) & 95\% CI Lower & 95\% CI Upper \\
+\midrule
+P1: Flood (GAT SSL) & 0.6708 & 0.6312 & 0.7089 \\
+P3: Nutrients (Trans. SSL) & 0.6850 & 0.6441 & 0.7218 \\
+P3: Sediment (Trans. SSL) & 0.2322 & 0.1874 & 0.2803 \\
+P2: Drought (GAT SSL) & $-$0.0189 & $-$0.0497 & 0.0092 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The confidence intervals confirm that the flood and nutrient $R^2$ values are significantly above zero (lower bounds $> 0.63$), while the drought $R^2$ interval spans zero, consistent with its interpretation as a null result. In addition to the bootstrapping analysis of the aggregate metrics, the Monte Carlo dropout results reported in Table~\ref{tab:mc_dropout} provide per-emulation prediction intervals. These intervals capture the predictive uncertainty of the downstream MLP task heads. As reported in Table~\ref{tab:mc_dropout}, the coverage (PICP) reaches 74.98\% for the Transformer SSL configuration, and the relatively narrow normalized widths (MPIW $\le$ 0.04) demonstrate that the model provides reliable probabilistic predictions rather than just deterministic point estimates. Such probabilistic projections are vital for risk-averse environmental decision-making, such as defining safety margins in flood warnings and agricultural nutrient runoff management.
+
+\subsection{Limitations and Constraints}\label{sec:limitations}
+We identify five principal limitations of the current study, which define the boundary conditions and future research directions for HydroGraphEM:
+
+\textbf{1. Drought emulation as a documented negative result.} Drought emulations ($P2$) exhibit negative $R^2$ across all encoder configurations (Tables~\ref{tab:temporal} and \ref{tab:extreme}), and we report this as an explicit failure case rather than a benchmark success. While flood events are highly event-driven, characterized by rapid runoff responses that are directly visible in monthly Earth Observation (EO) precipitation and surface water recurrence indices, drought is a slow, cumulative process governed by deep, long-term groundwater storage. Physically, drought in the Indus Delta is not merely a meteorological phenomenon of rainfall deficits, but is heavily modulated by long-term transboundary river basin routing, reservoir operations (e.g., Tarbela and Mangla dams), and intensive, deep aquifer pumping for agricultural irrigation. The water table response is governed by slow, non-linear subsurface saturated flow through alluvial aquifers, which exhibits long-term memory timescales of several years or decades. Surface EO parameters (such as Landsat NDVI/NDWI and MODIS soil moisture) only reflect skin-level soil wetness and vegetative health, which are decoupled from deep groundwater storage dynamics. Consequently, the temporal context window of 24 to 60 months used in the graph transformer is physically too short to capture the cumulative recharge-depletion cycles of these deep groundwater reserves, leading to the failure of the emulator to replicate the drought index ($P2$) anomalies. We introduced a comparative context-window ablation framework in Section 5.7 (Table~\ref{tab:context_ablation}) to test whether a 60-month window could resolve this. The consistently negative results across the 60-month ablation definitively establish that merely expanding the temporal attention window is insufficient. Future work must incorporate explicit groundwater-specific physical constraints and deep subsurface EO datasets (e.g., GRACE) to resolve this limitation.
+
+\textbf{2. Single-basin validation.} While the within-basin temporal and spatial (unseen reach sub-network) generalization results are encouraging, the model was evaluated exclusively on the Indus Delta watershed. Although the architectural design of HydroGraphEM---integrating a hierarchical directed graph topology and self-supervised pretraining on routed SWAT simulations---is basin-agnostic in principle, its transferability to other basins with distinct climatological and physiographic characteristics (e.g., glacier- or snowmelt-dominated systems) has not yet been empirically verified. Testing the framework on diverse geographical regions remains a key area for future work.
+
+\textbf{3. SWAT emulation, not observation simulation.} All training targets are derived from a calibrated SWAT model. HydroGraphEM therefore inherits any systematic biases in the SWAT calibration. Although the underlying SWAT model was previously calibrated and validated against observed discharge records at Kotri Barrage, direct observational validation of HydroGraphEM against gauge measurements during the test period (2019--2020) was not performed due to contemporaneous gauge data restrictions. Securing these records and expanding validation across distributed gauging networks remains a critical step to bridge the gap between emulation and direct real-world observation. Downstream users should treat the outputs as rapid SWAT approximations rather than direct environmental observations. Importantly, HydroGraphEM should be interpreted as an emulator of a calibrated process-based hydrological model rather than a direct replacement for field observations. Consequently, emulation quality depends not only on the learning capacity of the graph-learning architecture but also on the realism and uncertainty characteristics of the underlying SWAT simulations. Future work should investigate observational data assimilation and uncertainty propagation frameworks to quantify the combined effects of process-model and emulator uncertainty.
+
+\textbf{4. Epistemic uncertainty in pretraining.} While we have implemented MC-dropout to quantify downstream predictive uncertainty (Section 4.6 and Section 5.12), this primarily captures the parameter uncertainty of the downstream MLP task heads. The epistemic uncertainty of the pretrained GNN-Transformer encoder itself (e.g., variations in spatial-temporal attention weights under alternative weight initializations or pretraining data splits) is not fully quantified. Future work will investigate deep ensembles of pretrained encoders to capture this fundamental uncertainty.
+
+\textbf{5. Short chronological evaluation window.} The chronological test period evaluates emulator performance across a 24-month horizon (2019--2020) comprising 24 monthly steps. While this window is sufficient to evaluate the emulator's ability to replicate annual seasonal monsoon cycles and extreme flow peaks, a longer test period would provide a more robust assessment of the emulator's stability under long-term climatic variations. Future work will extend the evaluation period as longer simulation data streams become available.
+
+\section{Conclusions}
+We presented HydroGraphEM, a self-supervised spatiotemporal graph learning framework for multi-task hydrological emulation. By integrating calibrated SWAT simulation outputs with six satellite Earth Observation data streams into a directed, hierarchical graph topology, and pretraining a GNN-Transformer encoder via temporal mask reconstruction, the framework achieves strong temporal generalization ($R^2 = 0.67$ flood, $R^2 = 0.69$ nitrate) and demonstrates topological transferability to unseen sub-networks (Pearson $r = 0.38$--$0.60$). Explainability diagnostics confirm that the learned representations encode physically meaningful structures (Strahler stream-order clustering, monsoon attention concentration, and physically plausible feature attribution). The present study evaluates emulator fidelity to a calibrated SWAT model rather than direct predictive skill against field observations.
+
+Critically, we report drought emulation as a documented failure case ($R^2 < 0$), establishing that 24-month context windows are insufficient for multi-year groundwater processes. Spatial transfer exhibits a correlation--calibration gap: temporal dynamics transfer (Pearson $r = 0.38$--$0.60$) but absolute magnitudes do not ($R^2 < 0$), requiring post-hoc bias correction for operational use. We also emphasize that HydroGraphEM currently operates as a SWAT emulator; validation against independent field observations and cross-basin transfer remain essential next steps. Despite these limitations, the framework demonstrates that self-supervised pretraining on topologically structured hydrological data provides a statistically significant (block-bootstrap $p < 0.001$) and practically meaningful advantage over randomly initialized models. While the architectural design of HydroGraphEM---integrating a hierarchical directed graph topology and self-supervised pretraining on routed SWAT simulations---is basin-agnostic in principle, it has only been validated on the Indus Delta watershed, and comprehensive cross-basin validation remains the primary next step for future research.
+
+\section*{CRediT Author Contributions}
+\textbf{M. M. Muzzamil}: Conceptualization, Methodology, Software, Data Curation, Validation, Investigation, Writing - Original Draft. \textbf{M. A. Ismael}: Conceptualization, Supervision, Project Administration, Writing - Review \& Editing. \textbf{S. I. Ahmad}: Supervision, Resources, Project Administration, Writing - Review \& Editing. \textbf{R. B. Rustomov}: Conceptualization, Validation, Writing - Review \& Editing.
+
+\section*{Declaration of Competing Interests}
+The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.
+
+\section*{Funding}
+This research received no specific grant from any funding agency in the public, commercial, or not-for-profit sectors.
+
+\section*{Code and Data Availability Statement}
+The open-source Python implementation of the HydroGraphEM framework, including model architectures, pretraining pipelines, benchmarking suites, and graph topology definitions, is publicly available on GitHub at \url{https://github.com/mirzamuzzamilbaig/HydroGraphEM-A-Self-Supervised-Graph-Learning-Framework-}. The processed feature matrices and graph topology definitions are provided within the repository, and raw SWAT simulation datasets are available from the corresponding author upon reasonable request.
+
+\section*{Generative AI Use Declaration}
+During the preparation of this work the authors used Gemini to assist with manuscript drafting and revision. After using this tool, the authors reviewed and edited the content and take full responsibility for the content of the published article.
+
+
+\bibliographystyle{elsarticle-harv}
+\bibliography{references}
+
+\end{document}

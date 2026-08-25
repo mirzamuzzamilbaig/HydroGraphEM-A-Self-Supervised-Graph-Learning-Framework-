@@ -27,7 +27,7 @@ swat1/
 
 # 4. Draft Manuscripts, Reviewer Notes & Internal Workflows
 *.docx
-*.doc
+!manuscript/*.docx
 abstract_v1.md
 introduction_v1.md
 methods_section.md
