@@ -3,7 +3,10 @@
 # HydroGraphEM Framework
 # ==========================================
 
-# 1. Archives, Executables & Large Models
+# 1. Personal Manuscript & Local Drafts (DO NOT PUSH TO GITHUB)
+manuscript/
+
+# 2. Archives, Executables & Large Models
 *.exe
 *.rar
 *.zip
@@ -12,7 +15,7 @@
 *.iso
 swat1/
 
-# 2. Datasets, Weights & Binary Checkpoints (Exceeded GitHub limits / Large Data)
+# 3. Datasets, Weights & Binary Checkpoints (Exceeded GitHub limits / Large Data)
 *.parquet
 *.pkl
 *.pt
@@ -21,13 +24,12 @@ swat1/
 *.npy
 *.npz
 
-# 3. Security & API Keys
+# 4. Security & API Keys
 *.json
 !package.json
 
-# 4. Draft Manuscripts, Reviewer Notes & Internal Workflows
+# 5. Draft Manuscripts, Reviewer Notes & Internal Workflows
 *.docx
-!manuscript/*.docx
 abstract_v1.md
 introduction_v1.md
 methods_section.md
@@ -43,7 +45,7 @@ paper_outline.md
 title_candidates.md
 Final_PreSubmission_Audit.md
 
-# 5. Build Artifacts, Compiled PDFs & Root Loose Screenshots
+# 6. Build Artifacts, Compiled PDFs & Root Loose Screenshots
 *.pdf
 img1.png
 img2.png
@@ -57,7 +59,7 @@ feature_statistics.csv
 *_raw_metadata.csv
 metadata_*.csv
 
-# 6. Python & Jupyter Cache
+# 7. Python & Jupyter Cache
 __pycache__/
 *.py[cod]
 *$py.class
