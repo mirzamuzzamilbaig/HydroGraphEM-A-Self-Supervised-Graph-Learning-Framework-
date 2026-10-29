@@ -7,7 +7,7 @@ conforming strictly to IEEE authoring standards:
 
 1. Title & Metadata (Section 1: 1-column full-width, 7.25 in):
    - Title: 20pt Bold, Centered, Times New Roman.
-   - Author Line: Mirza Muhammad Muzzamil, Graduate Student Member, IEEE, Muhammad Ali Ismael, Senior Member, IEEE, Syed Imran Ahmad, and Rustam B. Rustomov.
+   - Author Line: Mirza Muhammad Muzzamil, Graduate Student Member, IEEE (Single Author).
    - Institutional Affiliations: Compact, italic, centered 8.5pt font with emails and corresponding author note.
 2. Continuous Section Break on Page 1:
    - Inserted in <w:pPr> of the last affiliation paragraph (<w:sectPr><w:type w:val="continuous"/><w:cols w:num="1"/></w:sectPr>).
@@ -181,10 +181,7 @@ def clean_ieee_latex(raw_tex):
 \\title{{\\LARGE \\textbf{{HydroGraphEM: A Self-Supervised Graph Learning Framework for Multi-Task Watershed Emulation of the Indus Delta}}}}
 
 \\author{{
-\\textbf{{Mirza Muhammad Muzzamil}}, \\textit{{Graduate Student Member, IEEE}},
-\\textbf{{Muhammad Ali Ismael}}, \\textit{{Senior Member, IEEE}},\\\\
-\\textbf{{Syed Imran Ahmad}}, and
-\\textbf{{Rustam B. Rustomov}}
+\\textbf{{Mirza Muhammad Muzzamil}}, \\textit{{Graduate Student Member, IEEE}}
 }}
 
 \\date{{}}
@@ -192,9 +189,7 @@ def clean_ieee_latex(raw_tex):
 \\maketitle
 
 \\noindent \\textit{{Department of Computer and Information Systems Engineering, NED University of Engineering and Technology, Karachi 75270, Pakistan}}\\\\
-\\noindent \\textit{{Department of Civil Engineering, NED University of Engineering and Technology, Karachi 75270, Pakistan}}\\\\
-\\noindent \\textit{{Institute of Physics, Ministry of Science and Education of the Republic of Azerbaijan, Baku AZ1143, Azerbaijan}}\\\\
-\\noindent \\textit{{(Corresponding author: Mirza Muhammad Muzzamil, e-mail: mirzamuzzamil@neduet.edu.pk)}}
+\\noindent \\textit{{(e-mail: mirzamuzzamil@neduet.edu.pk)}}
 
 \\noindent %%% IEEE_CONTINUOUS_BREAK %%%
 

@@ -174,7 +174,7 @@ def build_cover_letter(target_journal="EMS", output_path="Cover_Letter.docx"):
     r_jn.italic = True
     r_jn.bold = True
     p_open.add_run(
-        ". This study is co-authored by Mirza Muhammad Muzzamil, Muhammad Ali Ismael, Syed Imran Ahmad, and Rustam B. Rustomov."
+        ". This research is authored solely by Mirza Muhammad Muzzamil."
     )
 
     # -------------------------------------------------------------------------
@@ -267,8 +267,8 @@ def build_cover_letter(target_journal="EMS", output_path="Cover_Letter.docx"):
 
     declarations = [
         "Originality: This manuscript is an original work that has neither been published previously nor is currently under consideration for publication elsewhere in any format.",
-        "Author Approval: All co-authors have thoroughly reviewed, contributed to, and approved the submitted manuscript, and agree with its submission to the journal.",
-        "Competing Interests: The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.",
+        "Author Approval: As the sole author, I have thoroughly prepared, reviewed, and approved the submitted manuscript, and agree with its submission to the journal.",
+        "Competing Interests: The author declares that he has no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper.",
         "Funding: This research received no specific grant from any funding agency in the public, commercial, or not-for-profit sectors.",
         "Open Code and Data Availability: To ensure rigorous reproducibility, the complete open-source Python codebase, graph topology builders, and evaluation pipelines are publicly available on GitHub at: https://github.com/mirzamuzzamilbaig/HydroGraphEM-A-Self-Supervised-Graph-Learning-Framework-."
     ]
@@ -325,7 +325,7 @@ def build_cover_letter(target_journal="EMS", output_path="Cover_Letter.docx"):
     add_p("Respectfully submitted,", space_after=14)
 
     add_p("Mirza Muhammad Muzzamil", bold=True, space_after=1)
-    add_p("Corresponding Author, on behalf of all co-authors", italic=True, space_after=1)
+    add_p("Sole Author", italic=True, space_after=1)
     add_p("Department of Computer and Information Systems Engineering (CISE)", space_after=1)
     add_p("NED University of Engineering and Technology, Karachi 75270, Pakistan", space_after=1)
     add_p("Email: mirzamuzzamil@neduet.edu.pk | Phone: +92-334-2976696", space_after=1)
@@ -339,6 +339,7 @@ if __name__ == "__main__":
     # Generate EMS version
     build_cover_letter("EMS", "Cover_Letter_Environmental_Modelling_and_Software.docx")
     # Generate Geosciences version
+    build_cover_letter("IEEE Access", "Cover_Letter_IEEE_Access.docx")
     build_cover_letter("Geosciences", "Cover_Letter_Geosciences.docx")
     # Generate default root Cover_Letter.docx
     build_cover_letter("EMS", "Cover_Letter.docx")
